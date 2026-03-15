@@ -1,5 +1,6 @@
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local Debris = game:GetService("Debris")
 
 local COIN_FOLDER_NAME = "Coins"
 local DEFAULT_COIN_VALUE = 1
@@ -7,6 +8,8 @@ local DEFAULT_RESPAWN_TIME = 5
 local DEFAULT_SPAWN_INTERVAL = 1
 local DEFAULT_SPAWN_RADIUS = 30
 local DEFAULT_MAX_COINS = 100
+local DEFAULT_PICKUP_SOUND_ID = "rbxassetid://135303694517645"
+local DEFAULT_PICKUP_VOLUME = 0.8
 
 local coinStates = {}
 local coinDefaults = {}
@@ -24,6 +27,37 @@ local function getNumberAttribute(instance, attributeName, fallback)
 	end
 
 	return fallback
+end
+
+local function getStringAttribute(instance, attributeName, fallback)
+	local value = instance:GetAttribute(attributeName)
+	if type(value) == "string" and value ~= "" then
+		return value
+	end
+
+	if value ~= nil and type(value) ~= "string" then
+		warn(string.format("[CoinPickup] %s.%s must be a string. Using %s.", instance.Name, attributeName, fallback))
+	end
+
+	return fallback
+end
+
+local function playPickupSound(coin)
+	local soundId = getStringAttribute(coin, "PickupSoundId", DEFAULT_PICKUP_SOUND_ID)
+	if soundId == "" then
+		return
+	end
+
+	local sound = Instance.new("Sound")
+	sound.Name = "CoinPickupSound"
+	sound.SoundId = soundId
+	sound.Volume = getNumberAttribute(coin, "PickupVolume", DEFAULT_PICKUP_VOLUME)
+	sound.RollOffMaxDistance = 40
+	sound.RollOffMinDistance = 6
+	sound.Parent = coin
+	sound:Play()
+
+	Debris:AddItem(sound, 3)
 end
 
 local function getCoinsStat(player)
@@ -106,6 +140,7 @@ local function onCoinTouched(coin, hit)
 	local coinsStat = getCoinsStat(player)
 	local coinValue = getNumberAttribute(coin, "CoinValue", DEFAULT_COIN_VALUE)
 	coinsStat.Value = coinsStat.Value + coinValue
+	playPickupSound(coin)
 
 	hideCoin(coin)
 
