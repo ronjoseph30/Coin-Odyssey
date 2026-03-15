@@ -35,6 +35,10 @@ rojo build default.project.json --output "build/MyNewGame.rbxlx"
 
 Put all coin parts in `Workspace/Coins`.
 
+For full Studio bootstrapping and ongoing setup notes, see:
+
+- `docs/ROBLOX_STUDIO_SETUP.md`
+
 ### Coin Types
 
 - **Normal coin**: adds coins (default `+1`)
@@ -85,3 +89,4 @@ Diamoid coin spawner:
   - `Speed Coin`
   - `Diamoid Coin`
 - Spawners clone from these template parts.
+- Place files (`.rbxl`/`.rbxlx`) are build/runtime artifacts; source of truth is `src/` + Rojo project file.
