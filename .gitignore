@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# Rojo build outputs
+build/
+*.rbxlx
+*.rbxm
+
+# Roblox Studio local/temporary files
+*.lock
+*.tmp
+
+# Tool caches (if added later)
+.aftman/
+.lune/
