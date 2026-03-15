@@ -3,18 +3,22 @@ local Workspace = game:GetService("Workspace")
 local Debris = game:GetService("Debris")
 
 local COIN_FOLDER_NAME = "Coins"
+local BAD_COIN_NAME = "The Bad Coin"
 local DEFAULT_COIN_VALUE = 1
 local DEFAULT_RESPAWN_TIME = 5
 local DEFAULT_SPAWN_INTERVAL = 1
 local DEFAULT_SPAWN_RADIUS = 30
 local DEFAULT_MAX_COINS = 100
+local DEFAULT_BAD_SPAWN_INTERVAL = 1
+local DEFAULT_BAD_SPAWN_RADIUS = 30
+local DEFAULT_BAD_MAX_COINS = 100
 local DEFAULT_PICKUP_SOUND_ID = "rbxassetid://135303694517645"
 local DEFAULT_PICKUP_VOLUME = 0.8
 
 local coinStates = {}
 local coinDefaults = {}
 local randomGenerator = Random.new()
-local coinSpawnerStarted = false
+local coinSpawnerStarted = {}
 
 local function getNumberAttribute(instance, attributeName, fallback)
 	local value = instance:GetAttribute(attributeName)
@@ -139,7 +143,13 @@ local function onCoinTouched(coin, hit)
 
 	local coinsStat = getCoinsStat(player)
 	local coinValue = getNumberAttribute(coin, "CoinValue", DEFAULT_COIN_VALUE)
-	coinsStat.Value = coinsStat.Value + coinValue
+	local isBadCoin = coin.Name == BAD_COIN_NAME
+	if isBadCoin then
+		coinsStat.Value = math.max(0, coinsStat.Value - coinValue)
+	else
+		coinsStat.Value = coinsStat.Value + coinValue
+	end
+
 	playPickupSound(coin)
 
 	hideCoin(coin)
@@ -193,21 +203,33 @@ local function isCoinPart(instance)
 	return instance:IsA("BasePart")
 end
 
-local function getFirstCoinTemplate(coinsFolder)
+local function getFirstCoinTemplate(coinsFolder, templateName)
 	for _, instance in ipairs(coinsFolder:GetChildren()) do
 		if isCoinPart(instance) then
-			return instance
+			if templateName then
+				if instance.Name == templateName then
+					return instance
+				end
+			elseif instance.Name ~= BAD_COIN_NAME then
+				return instance
+			end
 		end
 	end
 
 	return nil
 end
 
-local function getCurrentCoinCount(coinsFolder)
+local function getCurrentCoinCount(coinsFolder, templateName)
 	local count = 0
 	for _, instance in ipairs(coinsFolder:GetChildren()) do
 		if isCoinPart(instance) then
-			count = count + 1
+			if templateName then
+				if instance.Name == templateName then
+					count = count + 1
+				end
+			elseif instance.Name ~= BAD_COIN_NAME then
+				count = count + 1
+			end
 		end
 	end
 
@@ -222,24 +244,38 @@ local function getRandomCoinPosition(templateCoin, spawnRadius)
 	return templateCoin.Position + offset
 end
 
-local function startCoinSpawner(coinsFolder)
-	if coinSpawnerStarted then
+local function startCoinSpawner(
+	coinsFolder,
+	spawnerKey,
+	templateName,
+	intervalAttribute,
+	radiusAttribute,
+	maxCountAttribute,
+	defaultInterval,
+	defaultRadius,
+	defaultMaxCount
+)
+	if coinSpawnerStarted[spawnerKey] then
 		return
 	end
 
-	local templateCoin = getFirstCoinTemplate(coinsFolder)
+	local templateCoin = getFirstCoinTemplate(coinsFolder, templateName)
 	if not templateCoin then
-		warn("[CoinPickup] No BasePart template coin found in Workspace.Coins.")
+		if templateName then
+			warn(string.format("[CoinPickup] Template coin '%s' not found in Workspace.Coins.", templateName))
+		else
+			warn("[CoinPickup] No normal coin template found in Workspace.Coins.")
+		end
 		return
 	end
 
-	coinSpawnerStarted = true
+	coinSpawnerStarted[spawnerKey] = true
 
 	task.spawn(function()
 		while coinsFolder.Parent do
-			local spawnInterval = getNumberAttribute(coinsFolder, "SpawnInterval", DEFAULT_SPAWN_INTERVAL)
+			local spawnInterval = getNumberAttribute(coinsFolder, intervalAttribute, defaultInterval)
 			if spawnInterval <= 0 then
-				spawnInterval = DEFAULT_SPAWN_INTERVAL
+				spawnInterval = defaultInterval
 			end
 
 			task.wait(spawnInterval)
@@ -247,18 +283,18 @@ local function startCoinSpawner(coinsFolder)
 			local hasTemplate = true
 
 			if not templateCoin.Parent then
-				templateCoin = getFirstCoinTemplate(coinsFolder)
+				templateCoin = getFirstCoinTemplate(coinsFolder, templateName)
 				if not templateCoin then
 					hasTemplate = false
 				end
 			end
 
 			if hasTemplate then
-				local maxCoins = getNumberAttribute(coinsFolder, "MaxCoins", DEFAULT_MAX_COINS)
-				if getCurrentCoinCount(coinsFolder) < maxCoins then
-					local spawnRadius = getNumberAttribute(coinsFolder, "SpawnRadius", DEFAULT_SPAWN_RADIUS)
+				local maxCoins = getNumberAttribute(coinsFolder, maxCountAttribute, defaultMaxCount)
+				if getCurrentCoinCount(coinsFolder, templateName) < maxCoins then
+					local spawnRadius = getNumberAttribute(coinsFolder, radiusAttribute, defaultRadius)
 					if spawnRadius < 0 then
-						spawnRadius = DEFAULT_SPAWN_RADIUS
+						spawnRadius = defaultRadius
 					end
 
 					local clone = templateCoin:Clone()
@@ -270,8 +306,34 @@ local function startCoinSpawner(coinsFolder)
 			end
 		end
 
-		coinSpawnerStarted = false
+		coinSpawnerStarted[spawnerKey] = false
 	end)
+end
+
+local function startAllCoinSpawners(coinsFolder)
+	startCoinSpawner(
+		coinsFolder,
+		"normal",
+		nil,
+		"SpawnInterval",
+		"SpawnRadius",
+		"MaxCoins",
+		DEFAULT_SPAWN_INTERVAL,
+		DEFAULT_SPAWN_RADIUS,
+		DEFAULT_MAX_COINS
+	)
+
+	startCoinSpawner(
+		coinsFolder,
+		"bad",
+		BAD_COIN_NAME,
+		"BadCoinSpawnInterval",
+		"BadCoinSpawnRadius",
+		"BadCoinMaxCoins",
+		DEFAULT_BAD_SPAWN_INTERVAL,
+		DEFAULT_BAD_SPAWN_RADIUS,
+		DEFAULT_BAD_MAX_COINS
+	)
 end
 
 local function setupCoinsInFolder(coinsFolder)
@@ -287,7 +349,7 @@ local function setupCoinsInFolder(coinsFolder)
 		end
 	end)
 
-	startCoinSpawner(coinsFolder)
+	startAllCoinSpawners(coinsFolder)
 end
 
 Players.PlayerAdded:Connect(function(player)
