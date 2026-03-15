@@ -5,7 +5,9 @@ local Debris = game:GetService("Debris")
 local COIN_FOLDER_NAME = "Coins"
 local BAD_COIN_NAME = "The Bad Coin"
 local SPEED_COIN_NAME = "Speed Coin"
+local DIAMOID_COIN_NAME = "Diamoid Coin"
 local DEFAULT_COIN_VALUE = 1
+local DEFAULT_DIAMOID_COIN_VALUE = 5
 local DEFAULT_RESPAWN_TIME = 5
 local DEFAULT_SPAWN_INTERVAL = 1
 local DEFAULT_SPAWN_RADIUS = 30
@@ -18,6 +20,9 @@ local DEFAULT_SPEED_SPAWN_RADIUS = 30
 local DEFAULT_SPEED_MAX_COINS = 12
 local DEFAULT_SPEED_BOOST_AMOUNT = 8
 local DEFAULT_SPEED_BOOST_DURATION = 6
+local DEFAULT_DIAMOID_SPAWN_INTERVAL = 12
+local DEFAULT_DIAMOID_SPAWN_RADIUS = 30
+local DEFAULT_DIAMOID_MAX_COINS = 8
 local DEFAULT_PICKUP_SOUND_ID = "rbxassetid://135303694517645"
 local DEFAULT_PICKUP_VOLUME = 0.8
 
@@ -104,8 +109,15 @@ local function getPlayerFromHit(hit)
 	return Players:GetPlayerFromCharacter(character)
 end
 
+local function hasCoinName(coin, coinName)
+	return string.lower(coin.Name) == string.lower(coinName)
+end
+
 local function isSpecialCoinName(coinName)
-	return coinName == BAD_COIN_NAME or coinName == SPEED_COIN_NAME
+	local lowerName = string.lower(coinName)
+	return lowerName == string.lower(BAD_COIN_NAME)
+		or lowerName == string.lower(SPEED_COIN_NAME)
+		or lowerName == string.lower(DIAMOID_COIN_NAME)
 end
 
 local function getHumanoidFromPlayer(player)
@@ -204,9 +216,15 @@ local function onCoinTouched(coin, hit)
 	coinStates[coin] = true
 
 	local coinsStat = getCoinsStat(player)
-	local coinValue = getNumberAttribute(coin, "CoinValue", DEFAULT_COIN_VALUE)
-	local isSpeedCoin = coin.Name == SPEED_COIN_NAME
-	local isBadCoin = coin.Name == BAD_COIN_NAME
+	local isSpeedCoin = hasCoinName(coin, SPEED_COIN_NAME)
+	local isBadCoin = hasCoinName(coin, BAD_COIN_NAME)
+	local isDiamoidCoin = hasCoinName(coin, DIAMOID_COIN_NAME)
+	local defaultCoinValue = DEFAULT_COIN_VALUE
+	if isDiamoidCoin then
+		defaultCoinValue = DEFAULT_DIAMOID_COIN_VALUE
+	end
+
+	local coinValue = getNumberAttribute(coin, "CoinValue", defaultCoinValue)
 	if isBadCoin then
 		coinsStat.Value = math.max(0, coinsStat.Value - coinValue)
 	else
@@ -274,7 +292,7 @@ local function getFirstCoinTemplate(coinsFolder, templateName)
 	for _, instance in ipairs(coinsFolder:GetChildren()) do
 		if isCoinPart(instance) then
 			if templateName then
-				if instance.Name == templateName then
+				if hasCoinName(instance, templateName) then
 					return instance
 				end
 			elseif not isSpecialCoinName(instance.Name) then
@@ -291,7 +309,7 @@ local function getCurrentCoinCount(coinsFolder, templateName)
 	for _, instance in ipairs(coinsFolder:GetChildren()) do
 		if isCoinPart(instance) then
 			if templateName then
-				if instance.Name == templateName then
+				if hasCoinName(instance, templateName) then
 					count = count + 1
 				end
 			elseif not isSpecialCoinName(instance.Name) then
@@ -412,6 +430,18 @@ local function startAllCoinSpawners(coinsFolder)
 		DEFAULT_SPEED_SPAWN_INTERVAL,
 		DEFAULT_SPEED_SPAWN_RADIUS,
 		DEFAULT_SPEED_MAX_COINS
+	)
+
+	startCoinSpawner(
+		coinsFolder,
+		"diamoid",
+		DIAMOID_COIN_NAME,
+		"DiamoidCoinSpawnInterval",
+		"DiamoidCoinSpawnRadius",
+		"DiamoidCoinMaxCoins",
+		DEFAULT_DIAMOID_SPAWN_INTERVAL,
+		DEFAULT_DIAMOID_SPAWN_RADIUS,
+		DEFAULT_DIAMOID_MAX_COINS
 	)
 end
 
