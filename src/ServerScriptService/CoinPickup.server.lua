@@ -4,19 +4,26 @@ local Debris = game:GetService("Debris")
 
 local COIN_FOLDER_NAME = "Coins"
 local BAD_COIN_NAME = "The Bad Coin"
+local SPEED_COIN_NAME = "Speed Coin"
 local DEFAULT_COIN_VALUE = 1
 local DEFAULT_RESPAWN_TIME = 5
 local DEFAULT_SPAWN_INTERVAL = 1
 local DEFAULT_SPAWN_RADIUS = 30
-local DEFAULT_MAX_COINS = 100
-local DEFAULT_BAD_SPAWN_INTERVAL = 1
+local DEFAULT_MAX_COINS = 140
+local DEFAULT_BAD_SPAWN_INTERVAL = 3
 local DEFAULT_BAD_SPAWN_RADIUS = 30
-local DEFAULT_BAD_MAX_COINS = 100
+local DEFAULT_BAD_MAX_COINS = 30
+local DEFAULT_SPEED_SPAWN_INTERVAL = 6
+local DEFAULT_SPEED_SPAWN_RADIUS = 30
+local DEFAULT_SPEED_MAX_COINS = 12
+local DEFAULT_SPEED_BOOST_AMOUNT = 8
+local DEFAULT_SPEED_BOOST_DURATION = 6
 local DEFAULT_PICKUP_SOUND_ID = "rbxassetid://135303694517645"
 local DEFAULT_PICKUP_VOLUME = 0.8
 
 local coinStates = {}
 local coinDefaults = {}
+local speedBoostStateByPlayer = {}
 local randomGenerator = Random.new()
 local coinSpawnerStarted = {}
 
@@ -97,6 +104,61 @@ local function getPlayerFromHit(hit)
 	return Players:GetPlayerFromCharacter(character)
 end
 
+local function isSpecialCoinName(coinName)
+	return coinName == BAD_COIN_NAME or coinName == SPEED_COIN_NAME
+end
+
+local function getHumanoidFromPlayer(player)
+	if not player.Character then
+		return nil
+	end
+
+	return player.Character:FindFirstChildOfClass("Humanoid")
+end
+
+local function applySpeedBoost(player, coin)
+	local humanoid = getHumanoidFromPlayer(player)
+	if not humanoid then
+		return
+	end
+
+	local boostAmount = getNumberAttribute(coin, "SpeedBoostAmount", DEFAULT_SPEED_BOOST_AMOUNT)
+	local boostDuration = getNumberAttribute(coin, "SpeedBoostDuration", DEFAULT_SPEED_BOOST_DURATION)
+	if boostAmount <= 0 or boostDuration <= 0 then
+		return
+	end
+
+	local state = speedBoostStateByPlayer[player]
+	if not state then
+		state = {
+			baseWalkSpeed = humanoid.WalkSpeed,
+			bonusSpeed = 0,
+		}
+		speedBoostStateByPlayer[player] = state
+	end
+
+	state.bonusSpeed = state.bonusSpeed + boostAmount
+	humanoid.WalkSpeed = state.baseWalkSpeed + state.bonusSpeed
+
+	task.delay(boostDuration, function()
+		local liveState = speedBoostStateByPlayer[player]
+		if not liveState then
+			return
+		end
+
+		liveState.bonusSpeed = math.max(0, liveState.bonusSpeed - boostAmount)
+
+		local liveHumanoid = getHumanoidFromPlayer(player)
+		if liveHumanoid then
+			liveHumanoid.WalkSpeed = liveState.baseWalkSpeed + liveState.bonusSpeed
+		end
+
+		if liveState.bonusSpeed <= 0 then
+			speedBoostStateByPlayer[player] = nil
+		end
+	end)
+end
+
 local function hideCoin(coin)
 	local defaults = coinDefaults[coin]
 	if defaults then
@@ -143,11 +205,16 @@ local function onCoinTouched(coin, hit)
 
 	local coinsStat = getCoinsStat(player)
 	local coinValue = getNumberAttribute(coin, "CoinValue", DEFAULT_COIN_VALUE)
+	local isSpeedCoin = coin.Name == SPEED_COIN_NAME
 	local isBadCoin = coin.Name == BAD_COIN_NAME
 	if isBadCoin then
 		coinsStat.Value = math.max(0, coinsStat.Value - coinValue)
 	else
 		coinsStat.Value = coinsStat.Value + coinValue
+	end
+
+	if isSpeedCoin then
+		applySpeedBoost(player, coin)
 	end
 
 	playPickupSound(coin)
@@ -210,7 +277,7 @@ local function getFirstCoinTemplate(coinsFolder, templateName)
 				if instance.Name == templateName then
 					return instance
 				end
-			elseif instance.Name ~= BAD_COIN_NAME then
+			elseif not isSpecialCoinName(instance.Name) then
 				return instance
 			end
 		end
@@ -227,7 +294,7 @@ local function getCurrentCoinCount(coinsFolder, templateName)
 				if instance.Name == templateName then
 					count = count + 1
 				end
-			elseif instance.Name ~= BAD_COIN_NAME then
+			elseif not isSpecialCoinName(instance.Name) then
 				count = count + 1
 			end
 		end
@@ -334,6 +401,18 @@ local function startAllCoinSpawners(coinsFolder)
 		DEFAULT_BAD_SPAWN_RADIUS,
 		DEFAULT_BAD_MAX_COINS
 	)
+
+	startCoinSpawner(
+		coinsFolder,
+		"speed",
+		SPEED_COIN_NAME,
+		"SpeedCoinSpawnInterval",
+		"SpeedCoinSpawnRadius",
+		"SpeedCoinMaxCoins",
+		DEFAULT_SPEED_SPAWN_INTERVAL,
+		DEFAULT_SPEED_SPAWN_RADIUS,
+		DEFAULT_SPEED_MAX_COINS
+	)
 end
 
 local function setupCoinsInFolder(coinsFolder)
@@ -354,10 +433,20 @@ end
 
 Players.PlayerAdded:Connect(function(player)
 	getCoinsStat(player)
+	player.CharacterAdded:Connect(function()
+		speedBoostStateByPlayer[player] = nil
+	end)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	speedBoostStateByPlayer[player] = nil
 end)
 
 for _, player in ipairs(Players:GetPlayers()) do
 	getCoinsStat(player)
+	player.CharacterAdded:Connect(function()
+		speedBoostStateByPlayer[player] = nil
+	end)
 end
 
 local coinsFolder = Workspace:FindFirstChild(COIN_FOLDER_NAME)
