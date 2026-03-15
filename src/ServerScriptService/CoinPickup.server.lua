@@ -4,9 +4,14 @@ local Workspace = game:GetService("Workspace")
 local COIN_FOLDER_NAME = "Coins"
 local DEFAULT_COIN_VALUE = 1
 local DEFAULT_RESPAWN_TIME = 5
+local DEFAULT_SPAWN_INTERVAL = 1
+local DEFAULT_SPAWN_RADIUS = 30
+local DEFAULT_MAX_COINS = 100
 
 local coinStates = {}
 local coinDefaults = {}
+local randomGenerator = Random.new()
+local coinSpawnerStarted = false
 
 local function getNumberAttribute(instance, attributeName, fallback)
 	local value = instance:GetAttribute(attributeName)
@@ -153,6 +158,87 @@ local function isCoinPart(instance)
 	return instance:IsA("BasePart")
 end
 
+local function getFirstCoinTemplate(coinsFolder)
+	for _, instance in ipairs(coinsFolder:GetChildren()) do
+		if isCoinPart(instance) then
+			return instance
+		end
+	end
+
+	return nil
+end
+
+local function getCurrentCoinCount(coinsFolder)
+	local count = 0
+	for _, instance in ipairs(coinsFolder:GetChildren()) do
+		if isCoinPart(instance) then
+			count = count + 1
+		end
+	end
+
+	return count
+end
+
+local function getRandomCoinPosition(templateCoin, spawnRadius)
+	local angle = randomGenerator:NextNumber(0, math.pi * 2)
+	local distance = randomGenerator:NextNumber(0, spawnRadius)
+	local offset = Vector3.new(math.cos(angle) * distance, 0, math.sin(angle) * distance)
+
+	return templateCoin.Position + offset
+end
+
+local function startCoinSpawner(coinsFolder)
+	if coinSpawnerStarted then
+		return
+	end
+
+	local templateCoin = getFirstCoinTemplate(coinsFolder)
+	if not templateCoin then
+		warn("[CoinPickup] No BasePart template coin found in Workspace.Coins.")
+		return
+	end
+
+	coinSpawnerStarted = true
+
+	task.spawn(function()
+		while coinsFolder.Parent do
+			local spawnInterval = getNumberAttribute(coinsFolder, "SpawnInterval", DEFAULT_SPAWN_INTERVAL)
+			if spawnInterval <= 0 then
+				spawnInterval = DEFAULT_SPAWN_INTERVAL
+			end
+
+			task.wait(spawnInterval)
+
+			local hasTemplate = true
+
+			if not templateCoin.Parent then
+				templateCoin = getFirstCoinTemplate(coinsFolder)
+				if not templateCoin then
+					hasTemplate = false
+				end
+			end
+
+			if hasTemplate then
+				local maxCoins = getNumberAttribute(coinsFolder, "MaxCoins", DEFAULT_MAX_COINS)
+				if getCurrentCoinCount(coinsFolder) < maxCoins then
+					local spawnRadius = getNumberAttribute(coinsFolder, "SpawnRadius", DEFAULT_SPAWN_RADIUS)
+					if spawnRadius < 0 then
+						spawnRadius = DEFAULT_SPAWN_RADIUS
+					end
+
+					local clone = templateCoin:Clone()
+					local randomPosition = getRandomCoinPosition(templateCoin, spawnRadius)
+					local rotation = templateCoin.CFrame - templateCoin.Position
+					clone.CFrame = CFrame.new(randomPosition) * rotation
+					clone.Parent = coinsFolder
+				end
+			end
+		end
+
+		coinSpawnerStarted = false
+	end)
+end
+
 local function setupCoinsInFolder(coinsFolder)
 	for _, instance in ipairs(coinsFolder:GetDescendants()) do
 		if isCoinPart(instance) then
@@ -165,6 +251,8 @@ local function setupCoinsInFolder(coinsFolder)
 			setupCoin(instance)
 		end
 	end)
+
+	startCoinSpawner(coinsFolder)
 end
 
 Players.PlayerAdded:Connect(function(player)
